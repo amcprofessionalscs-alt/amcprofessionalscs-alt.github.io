@@ -1,0 +1,29 @@
+# Images (and the generated pages) can't be pushed through the text-only connector, so this job downloads them
+# (Tameka's photos from the Vercel preview, SHA-1 checked; stock photos from Pexels) and commits them.
+name: Fetch site files
+on:
+  push:
+    paths: ['_assets/manifest.txt', '.github/workflows/fetch-assets.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify
+        run: |
+          set -euo pipefail
+          while read -r path url sha; do
+            [ -z "$path" ] && continue
+            mkdir -p "$(dirname "$path")"
+            curl -fsSL --retry 3 "$url" -o "$path"
+            if [ "$sha" != "-" ]; then echo "$sha  $path" | sha1sum -c -; else test "$(stat -c %s "$path")" -gt 5000; fi
+          done < _assets/manifest.txt
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add -A -- assets *.html robots.txt sitemap.xml
+          git diff --cached --quiet || { git commit -m "Add site files from manifest"; git push; }
